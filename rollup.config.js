@@ -22,7 +22,8 @@ function createEntry(config) {
     output: {
       banner,
       file: config.file,
-      format: config.format
+      format: config.format,
+      sourcemap: true,
     },
     onwarn: (msg, warn) => {
       if (!/Circular/.test(msg)) {

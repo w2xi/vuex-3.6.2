@@ -7,6 +7,7 @@ let Vue // bind on install
 
 export class Store {
   constructor (options = {}) {
+    // 比如通过 script 标签引入的形式
     // Auto install if it is not done yet and `window` has `Vue`.
     // To allow users to avoid auto-installation in some cases,
     // this code should be placed here. See #731
@@ -26,20 +27,31 @@ export class Store {
     } = options
 
     // store internal state
+    
+    // 用来判断严格模式下是否是用mutation修改state
     this._committing = false
+    // 存放action
     this._actions = Object.create(null)
+    // 存放action的订阅者
     this._actionSubscribers = []
+    // 存放mutation
     this._mutations = Object.create(null)
+    // 存放getter
     this._wrappedGetters = Object.create(null)
+    // module收集器
     this._modules = new ModuleCollection(options)
+    // 根据namespace存放module
     this._modulesNamespaceMap = Object.create(null)
+    // 存放订阅者
     this._subscribers = []
+    // 用以实现Watch的Vue实例
     this._watcherVM = new Vue()
     this._makeLocalGettersCache = Object.create(null)
 
     // bind commit and dispatch to self
     const store = this
     const { dispatch, commit } = this
+    // 将dispatch与commit调用的this绑定为store对象本身,否则在组件内部this.dispatch时的this会指向组件的vm
     this.dispatch = function boundDispatch (type, payload) {
       return dispatch.call(store, type, payload)
     }
@@ -47,6 +59,7 @@ export class Store {
       return commit.call(store, type, payload, options)
     }
 
+    // 严格模式(使 Vuex store 进入严格模式, 在严格模式下, 任何 mutation 处理函数以外修改 Vuex state 都会抛出错误)
     // strict mode
     this.strict = strict
 
@@ -64,6 +77,7 @@ export class Store {
     // apply plugins
     plugins.forEach(plugin => plugin(this))
 
+    // devtool插件
     const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
     if (useDevtools) {
       devtoolPlugin(this)
@@ -536,7 +550,9 @@ function unifyObjectStyle (type, payload, options) {
   return { type, payload, options }
 }
 
+// Vuex 插件的 install 方法, 供 Vue.use 调用安装插件
 export function install (_Vue) {
+  // 避免重复安装
   if (Vue && _Vue === Vue) {
     if (__DEV__) {
       console.error(
@@ -546,5 +562,6 @@ export function install (_Vue) {
     return
   }
   Vue = _Vue
+  // 将 vuexInit 方法混入(mixin)到 Vue 的 beforeCreate 钩子(Vue2.x) 或 _init 方法(Vue1.x)
   applyMixin(Vue)
 }

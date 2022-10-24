@@ -1,14 +1,17 @@
 /*!
  * vuex v3.6.2
- * (c) 2021 Evan You
+ * (c) 2022 Evan You
  * @license MIT
  */
 function applyMixin (Vue) {
   var version = Number(Vue.version.split('.')[0]);
 
+  // 将 vuexInit 方法混入(mixin)到 Vue 的 beforeCreate 钩子(Vue2.x) 或 _init 方法(Vue1.x)
+
   if (version >= 2) {
     Vue.mixin({ beforeCreate: vuexInit });
   } else {
+    // 重写 _init 方法
     // override init and inject vuex init procedure
     // for 1.x backwards compatibility.
     var _init = Vue.prototype._init;
@@ -23,17 +26,20 @@ function applyMixin (Vue) {
   }
 
   /**
+   * Vuex的init钩子, 会注入到每一个Vue实例的 beforeCreate 钩子中列表中
+   * beforeCreate 生命周期钩子执行时, $store 会被注入到对应的Vue实例中, 即 vm.$store
    * Vuex init hook, injected into each instances init hooks list.
    */
-
   function vuexInit () {
     var options = this.$options;
     // store injection
     if (options.store) {
+      // 存在store其实代表的就是Root节点, 直接执行store（function时）或者使用store（非function）
       this.$store = typeof options.store === 'function'
         ? options.store()
         : options.store;
     } else if (options.parent && options.parent.$store) {
+      // 子组件(VueComponent实例)直接从父组件(Vue实例)中获取$store, 这样就保证了所有组件都共用了全局的同一份store
       this.$store = options.parent.$store;
     }
   }
@@ -369,6 +375,7 @@ var Store = function Store (options) {
   var this$1 = this;
   if ( options === void 0 ) options = {};
 
+  // 比如通过 script 标签引入的形式
   // Auto install if it is not done yet and `window` has `Vue`.
   // To allow users to avoid auto-installation in some cases,
   // this code should be placed here. See #731
@@ -386,14 +393,24 @@ var Store = function Store (options) {
   var strict = options.strict; if ( strict === void 0 ) strict = false;
 
   // store internal state
+    
+  // 用来判断严格模式下是否是用mutation修改state
   this._committing = false;
+  // 存放action
   this._actions = Object.create(null);
+  // 存放action的订阅者
   this._actionSubscribers = [];
+  // 存放mutation
   this._mutations = Object.create(null);
+  // 存放getter
   this._wrappedGetters = Object.create(null);
+  // module收集器
   this._modules = new ModuleCollection(options);
+  // 根据namespace存放module
   this._modulesNamespaceMap = Object.create(null);
+  // 存放订阅者
   this._subscribers = [];
+  // 用以实现Watch的Vue实例
   this._watcherVM = new Vue();
   this._makeLocalGettersCache = Object.create(null);
 
@@ -402,6 +419,7 @@ var Store = function Store (options) {
   var ref = this;
   var dispatch = ref.dispatch;
   var commit = ref.commit;
+  // 将dispatch与commit调用的this绑定为store对象本身,否则在组件内部this.dispatch时的this会指向组件的vm
   this.dispatch = function boundDispatch (type, payload) {
     return dispatch.call(store, type, payload)
   };
@@ -409,6 +427,7 @@ var Store = function Store (options) {
     return commit.call(store, type, payload, options)
   };
 
+  // 严格模式(使 Vuex store 进入严格模式, 在严格模式下, 任何 mutation 处理函数以外修改 Vuex state 都会抛出错误)
   // strict mode
   this.strict = strict;
 
@@ -426,6 +445,7 @@ var Store = function Store (options) {
   // apply plugins
   plugins.forEach(function (plugin) { return plugin(this$1); });
 
+  // devtool插件
   var useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools;
   if (useDevtools) {
     devtoolPlugin(this);
@@ -913,7 +933,9 @@ function unifyObjectStyle (type, payload, options) {
   return { type: type, payload: payload, options: options }
 }
 
+// Vuex 插件的 install 方法, 供 Vue.use 调用安装插件
 function install (_Vue) {
+  // 避免重复安装
   if (Vue && _Vue === Vue) {
     if ((process.env.NODE_ENV !== 'production')) {
       console.error(
@@ -923,6 +945,7 @@ function install (_Vue) {
     return
   }
   Vue = _Vue;
+  // 将 vuexInit 方法混入(mixin)到 Vue 的 beforeCreate 钩子(Vue2.x) 或 _init 方法(Vue1.x)
   applyMixin(Vue);
 }
 
@@ -1241,3 +1264,4 @@ var index = {
 
 export default index;
 export { Store, createLogger, createNamespacedHelpers, install, mapActions, mapGetters, mapMutations, mapState };
+//# sourceMappingURL=vuex.esm.js.map
