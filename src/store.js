@@ -28,30 +28,32 @@ export class Store {
 
     // store internal state
     
-    // 用来判断严格模式下是否是用mutation修改state
+    // 用来判断严格模式下是否是用 mutation 修改 state
     this._committing = false
-    // 存放action
+    // 存放 action
     this._actions = Object.create(null)
-    // 存放action的订阅者
+    // 存放 action的订阅者
     this._actionSubscribers = []
-    // 存放mutation
+    // 存放 mutation
     this._mutations = Object.create(null)
-    // 存放getter
+    // 存放 getter
     this._wrappedGetters = Object.create(null)
-    // module收集器
+    // module 收集器
     this._modules = new ModuleCollection(options)
-    // 根据namespace存放module
+    // 根据 namespace 存放 module
     this._modulesNamespaceMap = Object.create(null)
     // 存放订阅者
     this._subscribers = []
-    // 用以实现Watch的Vue实例
+    // 用以实现 Watch 的 Vue 实例
     this._watcherVM = new Vue()
     this._makeLocalGettersCache = Object.create(null)
 
     // bind commit and dispatch to self
     const store = this
     const { dispatch, commit } = this
-    // 将dispatch与commit调用的this绑定为store对象本身,否则在组件内部this.dispatch时的this会指向组件的vm
+    // 将 dispatch 与 commit 调用的 this 绑定为 store 对象本身,
+    // 否则在组件内部 this.dispatch 时的 this 会指向组件的 vm ?
+
     this.dispatch = function boundDispatch (type, payload) {
       return dispatch.call(store, type, payload)
     }
@@ -64,20 +66,27 @@ export class Store {
     this.strict = strict
 
     const state = this._modules.root.state
-
+    
+    // 初始化 module.
+    // 这将会递归地注册所有的 sub-modules, 并且收集所有 module 的 getters 到 _wrappedGetters 中去.
+    // this._modules.root 代表根 module 独有保存的 module 对象
+    
     // init root module.
     // this also recursively registers all sub-modules
     // and collects all module getters inside this._wrappedGetters
     installModule(this, state, [], this._modules.root)
-
+    
+    // 使用 Vue 内部的响应式将 state 转为响应式属性, 
+    // 同时也将 _wrappedGetters 注册为 计算属性. 
     // initialize the store vm, which is responsible for the reactivity
     // (also registers _wrappedGetters as computed properties)
     resetStoreVM(this, state)
 
+    // 应用插件
     // apply plugins
     plugins.forEach(plugin => plugin(this))
 
-    // devtool插件
+    // devtool 插件
     const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
     if (useDevtools) {
       devtoolPlugin(this)
@@ -293,6 +302,7 @@ function resetStore (store, hot) {
 }
 
 function resetStoreVM (store, state, hot) {
+  // 存放之前的 vm 对象
   const oldVm = store._vm
 
   // bind store public getters
@@ -301,6 +311,8 @@ function resetStoreVM (store, state, hot) {
   store._makeLocalGettersCache = Object.create(null)
   const wrappedGetters = store._wrappedGetters
   const computed = {}
+
+  // 将对 store.getters.someProp 的访问代理到 store._vm.someProp, 即 Vue 实例的 computed 属性
   forEachValue(wrappedGetters, (fn, key) => {
     // use computed to leverage its lazy-caching mechanism
     // direct inline function use will lead to closure preserving oldVm.
@@ -312,25 +324,32 @@ function resetStoreVM (store, state, hot) {
     })
   })
 
+  // 使用 Vue 将 state 转换为 `响应式`, 
   // use a Vue instance to store the state tree
   // suppress warnings just in case the user has added
   // some funky global mixins
+
   const silent = Vue.config.silent
+  // Vue.config.silent 暂时设置为true的目的是在new一个Vue实例的过程中不会报出一切警告
   Vue.config.silent = true
+  // 这里new了一个Vue对象, 运用Vue内部的响应式实现注册state以及computed
   store._vm = new Vue({
     data: {
       $$state: state
     },
+    // example: vm.$store.getters.userInfo -> vm.$store._vm.userInfo ( 计算属性 )
     computed
   })
   Vue.config.silent = silent
 
   // enable strict mode for new vm
   if (store.strict) {
+    // 严格模式开启后, 对 state 的修改会 抛出异常.
     enableStrictMode(store)
   }
 
   if (oldVm) {
+    // 解除旧 vm 的 state 的引用, 以及销毁旧的 Vue 对象
     if (hot) {
       // dispatch changes in all subscribed watchers
       // to force getter re-evaluation for hot reloading.
@@ -343,9 +362,12 @@ function resetStoreVM (store, state, hot) {
 }
 
 function installModule (store, rootState, path, module, hot) {
+  // 是否是根 module
   const isRoot = !path.length
+  // 获取 module 的命名空间
   const namespace = store._modules.getNamespace(path)
 
+  // 如果有 namespace 则在 _modulesNamespaceMap 中注册
   // register in namespace map
   if (module.namespaced) {
     if (store._modulesNamespaceMap[namespace] && __DEV__) {
@@ -372,22 +394,26 @@ function installModule (store, rootState, path, module, hot) {
 
   const local = module.context = makeLocalContext(store, namespace, path)
 
+  // 遍历注册 mutations
   module.forEachMutation((mutation, key) => {
     const namespacedType = namespace + key
     registerMutation(store, namespacedType, mutation, local)
   })
 
+  // 遍历注册 actions
   module.forEachAction((action, key) => {
     const type = action.root ? key : namespace + key
     const handler = action.handler || action
     registerAction(store, type, handler, local)
   })
 
+  // 遍历注册 getters
   module.forEachGetter((getter, key) => {
     const namespacedType = namespace + key
     registerGetter(store, namespacedType, getter, local)
   })
 
+  // 递归安装 module
   module.forEachChild((child, key) => {
     installModule(store, rootState, path.concat(key), child, hot)
   })
