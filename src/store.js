@@ -28,7 +28,8 @@ export class Store {
 
     // store internal state
     
-    // 用来判断严格模式下是否是用 mutation 修改 state
+    // 一个开关, 用来判断严格模式下是否是用 mutation 修改 state
+    // true: 允许在 mutation 中修改 state; false: 默认值, 严格模式下, 在 mutation 之外修改 state 会抛出异常
     this._committing = false
     // 存放 action
     this._actions = Object.create(null)
@@ -103,6 +104,7 @@ export class Store {
     }
   }
 
+  // 调用 mutation 的 commit 方法
   commit (_type, _payload, _options) {
     // check object-style commit
     const {
@@ -112,6 +114,7 @@ export class Store {
     } = unifyObjectStyle(_type, _payload, _options)
 
     const mutation = { type, payload }
+    // 取出 type 对应的 mutation 方法
     const entry = this._mutations[type]
     if (!entry) {
       if (__DEV__) {
@@ -119,12 +122,15 @@ export class Store {
       }
       return
     }
+
+    // 执行 mutation 中的所有方法
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
       })
     })
 
+    // 通知所有订阅者
     this._subscribers
       .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
       .forEach(sub => sub(mutation, this.state))
@@ -140,6 +146,7 @@ export class Store {
     }
   }
 
+  // 调用 action 的 dispatch 方法
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
@@ -148,6 +155,7 @@ export class Store {
     } = unifyObjectStyle(_type, _payload)
 
     const action = { type, payload }
+    // actions 中取出 type 对应的 action
     const entry = this._actions[type]
     if (!entry) {
       if (__DEV__) {
@@ -157,6 +165,7 @@ export class Store {
     }
 
     try {
+      // 通知所有订阅者
       this._actionSubscribers
         .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
         .filter(sub => sub.before)
@@ -168,6 +177,7 @@ export class Store {
       }
     }
 
+    // 是数组则包装Promise形成一个新的Promise，只有一个则直接返回第0个
     const result = entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
@@ -175,6 +185,9 @@ export class Store {
     return new Promise((resolve, reject) => {
       result.then(res => {
         try {
+          // 通知所有订阅者
+          // 虽然之前已经通知了所有的订阅者, 但是由于这里的执行是异步的, 
+          // 因此在这里的代码被执行之前, 用户也有可能订阅 action
           this._actionSubscribers
             .filter(sub => sub.after)
             .forEach(sub => sub.after(action, this.state))
@@ -201,10 +214,12 @@ export class Store {
     })
   }
 
+  // 订阅 mutation, 返回取消订阅的函数. 详情参看官方文档介绍
   subscribe (fn, options) {
     return genericSubscribe(fn, this._subscribers, options)
   }
 
+  // 订阅 action
   subscribeAction (fn, options) {
     const subs = typeof fn === 'function' ? { before: fn } : fn
     return genericSubscribe(subs, this._actionSubscribers, options)
@@ -277,10 +292,12 @@ export class Store {
 
 function genericSubscribe (fn, subs, options) {
   if (subs.indexOf(fn) < 0) {
+    // prepend 属性存在且为 true, 则将其添加到数组的最开始, 否则添加到末尾
     options && options.prepend
       ? subs.unshift(fn)
       : subs.push(fn)
   }
+  // 返回 unsubscribe 函数, 用于卸载订阅
   return () => {
     const i = subs.indexOf(fn)
     if (i > -1) {
@@ -332,7 +349,7 @@ function resetStoreVM (store, state, hot) {
   const silent = Vue.config.silent
   // Vue.config.silent 暂时设置为true的目的是在new一个Vue实例的过程中不会报出一切警告
   Vue.config.silent = true
-  // 这里new了一个Vue对象, 运用Vue内部的响应式实现注册state以及computed
+  // 通过 new Vue() 的形式将 state 转换为响应式, 同时将 getters 转为 computed
   store._vm = new Vue({
     data: {
       $$state: state
@@ -344,7 +361,7 @@ function resetStoreVM (store, state, hot) {
 
   // enable strict mode for new vm
   if (store.strict) {
-    // 严格模式开启后, 对 state 的修改会 抛出异常.
+    // 开启严格模式后, 在 mutation 之外修改 state 会抛出异常.
     enableStrictMode(store)
   }
 
