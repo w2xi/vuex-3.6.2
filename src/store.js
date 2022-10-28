@@ -165,7 +165,7 @@ export class Store {
     }
 
     try {
-      // 通知所有订阅者
+      // 通知所有订阅者 ( before )
       this._actionSubscribers
         .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
         .filter(sub => sub.before)
@@ -177,7 +177,7 @@ export class Store {
       }
     }
 
-    // 是数组则包装Promise形成一个新的Promise，只有一个则直接返回第0个
+    // 是数组则包装 Promise 形成一个新的 Promise, 只有一个则直接返回第0个
     const result = entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
@@ -185,9 +185,7 @@ export class Store {
     return new Promise((resolve, reject) => {
       result.then(res => {
         try {
-          // 通知所有订阅者
-          // 虽然之前已经通知了所有的订阅者, 但是由于这里的执行是异步的, 
-          // 因此在这里的代码被执行之前, 用户也有可能订阅 action
+          // 通知所有订阅者 ( after )
           this._actionSubscribers
             .filter(sub => sub.after)
             .forEach(sub => sub.after(action, this.state))
@@ -200,6 +198,7 @@ export class Store {
         resolve(res)
       }, error => {
         try {
+          // 通知订阅者中的 error 处理函数以捕获分发 action 的时候被抛出的错误
           this._actionSubscribers
             .filter(sub => sub.error)
             .forEach(sub => sub.error(action, this.state, error))
@@ -525,8 +524,11 @@ function registerMutation (store, type, handler, local) {
   })
 }
 
+// 注册 action
 function registerAction (store, type, handler, local) {
+  // 取出 type 对应的 actions (数组)
   const entry = store._actions[type] || (store._actions[type] = [])
+  // 对 handler 处理函数进行包装
   entry.push(function wrappedActionHandler (payload) {
     let res = handler.call(store, {
       dispatch: local.dispatch,
@@ -536,10 +538,13 @@ function registerAction (store, type, handler, local) {
       rootGetters: store.getters,
       rootState: store.state
     }, payload)
+    // 判断是否是 Promise
     if (!isPromise(res)) {
+      // 不是 Promise 则将其转为 Promise
       res = Promise.resolve(res)
     }
     if (store._devtoolHook) {
+      // 存在 devtool 插件时, emit vuex:error 事件
       return res.catch(err => {
         store._devtoolHook.emit('vuex:error', err)
         throw err
@@ -567,6 +572,7 @@ function registerGetter (store, type, rawGetter, local) {
   }
 }
 
+// 深度监听严格模式下 state 的修改, 在 mutation 修改 state 会抛出异常
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, () => {
     if (__DEV__) {
