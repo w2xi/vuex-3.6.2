@@ -7,7 +7,7 @@ let Vue // bind on install
 
 export class Store {
   constructor (options = {}) {
-    // 比如通过 script 标签引入的形式
+    // 比如通过 script 标签引入的形式, 会自动执行 install 方法
     // Auto install if it is not done yet and `window` has `Vue`.
     // To allow users to avoid auto-installation in some cases,
     // this code should be placed here. See #731
@@ -22,7 +22,9 @@ export class Store {
     }
 
     const {
+      // 插件默认是空数组
       plugins = [],
+      // 严格模式默认是 false
       strict = false
     } = options
 
@@ -31,22 +33,23 @@ export class Store {
     // 一个开关, 用来判断严格模式下是否是用 mutation 修改 state
     // true: 允许在 mutation 中修改 state; false: 默认值, 严格模式下, 在 mutation 之外修改 state 会抛出异常
     this._committing = false
-    // 存放 action
+    // 用来存放处理后的用户自定义的 actoins
     this._actions = Object.create(null)
-    // 存放 action的订阅者
+    // 存放 actions 的订阅者
     this._actionSubscribers = []
-    // 存放 mutation
+    // 用来存放处理后的用户自定义的 mutations
     this._mutations = Object.create(null)
-    // 存放 getter
+    // 用来存放处理后的用户自定义的 getters
     this._wrappedGetters = Object.create(null)
-    // module 收集器
+    // module 收集器, 构造模块树形结构
     this._modules = new ModuleCollection(options)
-    // 根据 namespace 存放 module
+    // 用于存储模块命名空间的关系
     this._modulesNamespaceMap = Object.create(null)
     // 存放订阅者
     this._subscribers = []
-    // 用以实现 Watch 的 Vue 实例
+    // 用于使用 $watch 观测 getters
     this._watcherVM = new Vue()
+    // 用来存放生成的本地 getters 的缓存
     this._makeLocalGettersCache = Object.create(null)
 
     // bind commit and dispatch to self
@@ -66,11 +69,12 @@ export class Store {
     // strict mode
     this.strict = strict
 
+    // 根模块的 state
     const state = this._modules.root.state
     
     // 初始化 module.
-    // 这将会递归地注册所有的 sub-modules, 并且收集所有 module 的 getters 到 _wrappedGetters 中去.
-    // this._modules.root 代表根 module 独有保存的 module 对象
+    // 这将会递归地注册所有的 子模块, 并且收集所有 模块 的 getters 到 _wrappedGetters 中去.
+    // this._modules.root 代表 根模块 保存的模块对象
     
     // init root module.
     // this also recursively registers all sub-modules
@@ -104,8 +108,14 @@ export class Store {
     }
   }
 
-  // 调用 mutation 的 commit 方法
+  /**
+   * 调用 mutation 的 commit 方法
+   * @param {String} _type 
+   * @param {Any} _payload 
+   * @param {Any} _options 
+   */
   commit (_type, _payload, _options) {
+    // 统一成对象风格
     // check object-style commit
     const {
       type,
@@ -125,6 +135,7 @@ export class Store {
 
     // 执行 mutation 中的所有方法
     this._withCommit(() => {
+      // 遍历执行
       entry.forEach(function commitIterator (handler) {
         handler(payload)
       })
@@ -146,7 +157,12 @@ export class Store {
     }
   }
 
-  // 调用 action 的 dispatch 方法
+  /**
+   * 调用 action 的 dispatch 方法
+   * @param {String} _type 
+   * @param {Any} _payload 
+   * @returns 
+   */
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
@@ -224,6 +240,7 @@ export class Store {
     return genericSubscribe(subs, this._actionSubscribers, options)
   }
 
+  // 观察一个 getter 方法. 这里用的是 vm.$watch api
   watch (getter, cb, options) {
     if (__DEV__) {
       assert(typeof getter === 'function', `store.watch only accepts a function.`)
@@ -237,7 +254,9 @@ export class Store {
     })
   }
 
+  // 注册一个动态 module，当业务进行异步加载的时候, 可以通过该接口进行注册动态 module
   registerModule (path, rawModule, options = {}) {
+    // 转为数组
     if (typeof path === 'string') path = [path]
 
     if (__DEV__) {
@@ -245,12 +264,16 @@ export class Store {
       assert(path.length > 0, 'cannot register the root module by using registerModule.')
     }
 
+    // 注册
     this._modules.register(path, rawModule)
+    // 初始化 module
     installModule(this, this.state, path, this._modules.get(path), options.preserveState)
+    // 通过 vm 重置 store
     // reset store to update getters...
     resetStoreVM(this, this.state)
   }
 
+  // 注销一个动态module
   unregisterModule (path) {
     if (typeof path === 'string') path = [path]
 
@@ -258,11 +281,15 @@ export class Store {
       assert(Array.isArray(path), `module path must be a string or an Array.`)
     }
 
+    // 注销
     this._modules.unregister(path)
     this._withCommit(() => {
+      // 获取父级的state
       const parentState = getNestedState(this.state, path.slice(0, -1))
+      // 从父级中删除
       Vue.delete(parentState, path[path.length - 1])
     })
+    // 重置 store
     resetStore(this)
   }
 
@@ -305,6 +332,7 @@ function genericSubscribe (fn, subs, options) {
   }
 }
 
+// 重置 store
 function resetStore (store, hot) {
   store._actions = Object.create(null)
   store._mutations = Object.create(null)
@@ -328,7 +356,9 @@ function resetStoreVM (store, state, hot) {
   const wrappedGetters = store._wrappedGetters
   const computed = {}
 
-  // 将对 store.getters.someProp 的访问代理到 store._vm.someProp, 即 Vue 实例的 computed 属性
+  // 遍历 wrappedGetters
+  //  1. 收集 computed
+  //  2. 将对 store.getters.someProp 的访问代理到 store._vm.someProp, 即 Vue 实例的 computed 属性
   forEachValue(wrappedGetters, (fn, key) => {
     // use computed to leverage its lazy-caching mechanism
     // direct inline function use will lead to closure preserving oldVm.
@@ -346,6 +376,7 @@ function resetStoreVM (store, state, hot) {
   // some funky global mixins
 
   const silent = Vue.config.silent
+  // 静默模式开启
   // Vue.config.silent 暂时设置为true的目的是在new一个Vue实例的过程中不会报出一切警告
   Vue.config.silent = true
   // 通过 new Vue() 的形式将 state 转换为响应式, 同时将 getters 转为 computed
@@ -365,7 +396,7 @@ function resetStoreVM (store, state, hot) {
   }
 
   if (oldVm) {
-    // 解除旧 vm 的 state 的引用, 以及销毁旧的 Vue 对象
+    // 如果热加载为 true, 解除旧 vm 的 state 的引用, 以及销毁旧的 Vue 对象
     if (hot) {
       // dispatch changes in all subscribed watchers
       // to force getter re-evaluation for hot reloading.
@@ -373,28 +404,40 @@ function resetStoreVM (store, state, hot) {
         oldVm._data.$$state = null
       })
     }
+    // 销毁实例
     Vue.nextTick(() => oldVm.$destroy())
   }
 }
 
+/**
+ * 
+ * @param {Object} store Store 实例
+ * @param {Object} rootState state
+ * @param {Array} path 路径
+ * @param {Object} module 模块
+ * @param {Boolean} hot 
+ */
 function installModule (store, rootState, path, module, hot) {
   // 是否是根 module
   const isRoot = !path.length
-  // 获取 module 的命名空间
+  // 获取 module 的命名空间 字符串
   const namespace = store._modules.getNamespace(path)
 
-  // 如果有 namespace 则在 _modulesNamespaceMap 中注册
   // register in namespace map
   if (module.namespaced) {
+    // 模块命名空间 map 对象中已经有了, 开发环境报错提示重复
     if (store._modulesNamespaceMap[namespace] && __DEV__) {
       console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
     }
     store._modulesNamespaceMap[namespace] = module
   }
 
+  // 不是根模块且不是热重载
   // set state
   if (!isRoot && !hot) {
+    // 获取父级的 state
     const parentState = getNestedState(rootState, path.slice(0, -1))
+    // 模块名称
     const moduleName = path[path.length - 1]
     store._withCommit(() => {
       if (__DEV__) {
@@ -404,10 +447,14 @@ function installModule (store, rootState, path, module, hot) {
           )
         }
       }
+      // 给父级 state 设置 子模块的 state
       Vue.set(parentState, moduleName, module.state)
     })
   }
 
+  // module.context 这个赋值主要是给 helpers 中 mapState, mapGetters, mapMutations, mapActions 四个辅助函数使用的
+  // 生成本地的 dispatc, commit, getters 和 state
+  // 主要作用就是抹平差异化, 不需要用户再传模块参数
   const local = module.context = makeLocalContext(store, namespace, path)
 
   // 遍历注册 mutations
@@ -517,16 +564,31 @@ function makeLocalGetters (store, namespace) {
   return store._makeLocalGettersCache[namespace]
 }
 
+/**
+ * 注册 mutation
+ * @param {Object} store 
+ * @param {String} type 类型
+ * @param {Function} handler 用户自定义函数 
+ * @param {Object} local 
+ */
 function registerMutation (store, type, handler, local) {
+  // 获取对应 type 的 mutation, 如果不存在则 赋值空数组
   const entry = store._mutations[type] || (store._mutations[type] = [])
+  // 对 handler 处理函数进行包装
   entry.push(function wrappedMutationHandler (payload) {
     handler.call(store, local.state, payload)
   })
 }
 
-// 注册 action
+/**
+ * 注册 action
+ * @param {Object} store 
+ * @param {String} type 类型
+ * @param {Function} handler 用户自定义函数
+ * @param {Object} local
+ */
 function registerAction (store, type, handler, local) {
-  // 取出 type 对应的 actions (数组)
+  // 取出对应 type 的 action, 如果不存在则 赋值空数组
   const entry = store._actions[type] || (store._actions[type] = [])
   // 对 handler 处理函数进行包装
   entry.push(function wrappedActionHandler (payload) {
@@ -538,13 +600,16 @@ function registerAction (store, type, handler, local) {
       rootGetters: store.getters,
       rootState: store.state
     }, payload)
+    // 这里也就是 action 支持异步操作的原因
+
     // 判断是否是 Promise
     if (!isPromise(res)) {
       // 不是 Promise 则将其转为 Promise
       res = Promise.resolve(res)
     }
     if (store._devtoolHook) {
-      // 存在 devtool 插件时, emit vuex:error 事件
+      // 存在 devtool 插件时
+      // 如果捕获到错误, 则 emit vuex:error 事件给 devtool
       return res.catch(err => {
         store._devtoolHook.emit('vuex:error', err)
         throw err
@@ -555,6 +620,16 @@ function registerAction (store, type, handler, local) {
   })
 }
 
+/**
+ * 注册 getter
+ * @param {Object} store  Store 实例
+ * @param {String} type 类型
+ * @param {Object} rawGetter  原始未加工的 getter 也就是用户定义的 getter 函数
+ * @param {Object} local 本地 local 对象
+ * @examples  
+ * 
+ * // 比如 cartProducts: (state, getters, rootState, rootGetters) => {}
+ */
 function registerGetter (store, type, rawGetter, local) {
   if (store._wrappedGetters[type]) {
     if (__DEV__) {

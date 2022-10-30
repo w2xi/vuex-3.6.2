@@ -1,6 +1,6 @@
 /*!
  * vuex v3.6.2
- * (c) 2021 Evan You
+ * (c) 2022 Evan You
  * @license MIT
  */
 (function (global, factory) {
@@ -153,3 +153,4 @@
   return createLogger;
 
 })));
+//# sourceMappingURL=logger.js.map

@@ -25,7 +25,14 @@ export default class ModuleCollection {
     update([], this.root, rawRootModule)
   }
 
+  /**
+   * 注册模块
+   * @param {Array} path 路径
+   * @param {Object} rawModule 原始未加工的模块
+   * @param {Boolean} runtime 默认值为 true
+   */
   register (path, rawModule, runtime = true) {
+    // 开发环境下, 断言判断用户自定义的模块是否符合要求
     if (__DEV__) {
       assertRawModule(path, rawModule)
     }
@@ -38,6 +45,7 @@ export default class ModuleCollection {
       parent.addChild(path[path.length - 1], newModule)
     }
 
+    // 递归注册子模块
     // register nested modules
     if (rawModule.modules) {
       forEachValue(rawModule.modules, (rawChildModule, key) => {

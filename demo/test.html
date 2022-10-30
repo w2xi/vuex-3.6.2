@@ -17,7 +17,41 @@
   <script>
     Vue.use(Vuex)
 
+    const userModule = {
+      state: {
+        userInfo: {
+          userId: 1,
+          address: 'ChangSha.China'
+        }
+      },
+      mutations: {
+        SET_USER_ID(state, uid) {
+          state.userInfo.userId = uid
+        },
+      },
+      getters: {
+        userId: state => state.userInfo.userId,
+      }
+    }
+    const appModule = {
+      state: {
+        menus: [
+          {
+            path: '/app/user',
+          },
+          {
+            path: '/app/order'
+          }
+        ]
+      }
+    }
+
     const store = new Vuex.Store({
+      namespaced: true,
+      modules: {
+        user: userModule,
+        app: appModule,
+      },
       state: {
         counter: 0,
       },
@@ -27,12 +61,23 @@
         },
         decrease(state) {
           state.counter--
-        }
-      }
+        },
+        SET_USER_ID() {},
+      },
+      getters: {
+        cid: state => state.counter
+      },
     })
+
+    console.log(store);
 
     const vm = new Vue({
       store,
+      computed: {
+        ...Vuex.mapState({
+          cid: state => state.counter
+        })
+      },
       methods: {
         increment() {
           store.commit('increment')

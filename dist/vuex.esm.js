@@ -45,11 +45,15 @@ function applyMixin (Vue) {
   }
 }
 
+// Browser / NodeJS / ...
 var target = typeof window !== 'undefined'
   ? window
   : typeof global !== 'undefined'
     ? global
     : {};
+
+// 如果安装了 Vue.js devtools 插件, 则会在 window 对象上暴露一个 VUE_DEVTOOLS_GLOBAL_HOOK
+// 从全局对象中(比如 window)获取 __VUE_DEVTOOLS_GLOBAL_HOOK__ 插件
 var devtoolHook = target.__VUE_DEVTOOLS_GLOBAL_HOOK__;
 
 function devtoolPlugin (store) {
@@ -57,16 +61,21 @@ function devtoolPlugin (store) {
 
   store._devtoolHook = devtoolHook;
 
+  // 触发 vuex 的 'vuex:init' 事件, 并将 store 传递给 deltool 插件, 使插件获取 store 的实例
   devtoolHook.emit('vuex:init', store);
 
+  // 订阅 vuex 的 'vuex:travel-to-state' 事件
   devtoolHook.on('vuex:travel-to-state', function (targetState) {
     store.replaceState(targetState);
   });
 
+  // 订阅 state 的变化
   store.subscribe(function (mutation, state) {
+    console.log('vuex:mutation');
     devtoolHook.emit('vuex:mutation', mutation, state);
   }, { prepend: true });
 
+  // 订阅 action 
   store.subscribeAction(function (action, state) {
     devtoolHook.emit('vuex:action', action, state);
   }, { prepend: true });
@@ -258,9 +267,11 @@ ModuleCollection.prototype.register = function register (path, rawModule, runtim
     parent.addChild(path[path.length - 1], newModule);
   }
 
+  // 注册嵌套的 modules
   // register nested modules
   if (rawModule.modules) {
     forEachValue(rawModule.modules, function (rawChildModule, key) {
+      // 递归注册
       this$1.register(path.concat(key), rawChildModule, runtime);
     });
   }
@@ -375,7 +386,7 @@ var Store = function Store (options) {
   var this$1 = this;
   if ( options === void 0 ) options = {};
 
-  // 比如通过 script 标签引入的形式
+  // 比如通过 script 标签引入的形式, 会自动执行 install 方法
   // Auto install if it is not done yet and `window` has `Vue`.
   // To allow users to avoid auto-installation in some cases,
   // this code should be placed here. See #731
@@ -394,24 +405,26 @@ var Store = function Store (options) {
 
   // store internal state
     
-  // 用来判断严格模式下是否是用mutation修改state
+  // 一个开关, 用来判断严格模式下是否是用 mutation 修改 state
+  // true: 允许在 mutation 中修改 state; false: 默认值, 严格模式下, 在 mutation 之外修改 state 会抛出异常
   this._committing = false;
-  // 存放action
+  // 用来存放处理后的用户自定义的 actoins
   this._actions = Object.create(null);
-  // 存放action的订阅者
+  // 存放 actions 的订阅者
   this._actionSubscribers = [];
-  // 存放mutation
+  // 用来存放处理后的用户自定义的 mutations
   this._mutations = Object.create(null);
-  // 存放getter
+  // 用来存放处理后的用户自定义的 getters
   this._wrappedGetters = Object.create(null);
-  // module收集器
+  // module 收集器, 构造模块树形结构
   this._modules = new ModuleCollection(options);
-  // 根据namespace存放module
+  // 用于存储模块命名空间的关系
   this._modulesNamespaceMap = Object.create(null);
   // 存放订阅者
   this._subscribers = [];
-  // 用以实现Watch的Vue实例
+  // 用于使用 $watch 观测 getters
   this._watcherVM = new Vue();
+  // 用来存放生成的本地 getters 的缓存
   this._makeLocalGettersCache = Object.create(null);
 
   // bind commit and dispatch to self
@@ -419,7 +432,9 @@ var Store = function Store (options) {
   var ref = this;
   var dispatch = ref.dispatch;
   var commit = ref.commit;
-  // 将dispatch与commit调用的this绑定为store对象本身,否则在组件内部this.dispatch时的this会指向组件的vm
+  // 将 dispatch 与 commit 调用的 this 绑定为 store 对象本身,
+  // 否则在组件内部 this.dispatch 时的 this 会指向组件的 vm ?
+
   this.dispatch = function boundDispatch (type, payload) {
     return dispatch.call(store, type, payload)
   };
@@ -431,21 +446,29 @@ var Store = function Store (options) {
   // strict mode
   this.strict = strict;
 
+  // 根模块的 state
   var state = this._modules.root.state;
-
+    
+  // 初始化 module.
+  // 这将会递归地注册所有的 sub-modules, 并且收集所有 module 的 getters 到 _wrappedGetters 中去.
+  // this._modules.root 代表根 module 独有保存的 module 对象
+    
   // init root module.
   // this also recursively registers all sub-modules
   // and collects all module getters inside this._wrappedGetters
   installModule(this, state, [], this._modules.root);
-
+    
+  // 使用 Vue 内部的响应式将 state 转为响应式属性, 
+  // 同时也将 _wrappedGetters 注册为 计算属性. 
   // initialize the store vm, which is responsible for the reactivity
   // (also registers _wrappedGetters as computed properties)
   resetStoreVM(this, state);
 
+  // 应用插件
   // apply plugins
   plugins.forEach(function (plugin) { return plugin(this$1); });
 
-  // devtool插件
+  // devtool 插件
   var useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools;
   if (useDevtools) {
     devtoolPlugin(this);
@@ -464,6 +487,7 @@ prototypeAccessors$1.state.set = function (v) {
   }
 };
 
+// 调用 mutation 的 commit 方法
 Store.prototype.commit = function commit (_type, _payload, _options) {
     var this$1 = this;
 
@@ -474,6 +498,7 @@ Store.prototype.commit = function commit (_type, _payload, _options) {
     var options = ref.options;
 
   var mutation = { type: type, payload: payload };
+  // 取出 type 对应的 mutation 方法
   var entry = this._mutations[type];
   if (!entry) {
     if ((process.env.NODE_ENV !== 'production')) {
@@ -481,12 +506,15 @@ Store.prototype.commit = function commit (_type, _payload, _options) {
     }
     return
   }
+
+  // 执行 mutation 中的所有方法
   this._withCommit(function () {
     entry.forEach(function commitIterator (handler) {
       handler(payload);
     });
   });
 
+  // 通知所有订阅者
   this._subscribers
     .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
     .forEach(function (sub) { return sub(mutation, this$1.state); });
@@ -502,6 +530,7 @@ Store.prototype.commit = function commit (_type, _payload, _options) {
   }
 };
 
+// 调用 action 的 dispatch 方法
 Store.prototype.dispatch = function dispatch (_type, _payload) {
     var this$1 = this;
 
@@ -511,6 +540,7 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
     var payload = ref.payload;
 
   var action = { type: type, payload: payload };
+  // actions 中取出 type 对应的 action
   var entry = this._actions[type];
   if (!entry) {
     if ((process.env.NODE_ENV !== 'production')) {
@@ -520,6 +550,7 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
   }
 
   try {
+    // 通知所有订阅者 ( before )
     this._actionSubscribers
       .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
       .filter(function (sub) { return sub.before; })
@@ -531,6 +562,7 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
     }
   }
 
+  // 是数组则包装 Promise 形成一个新的 Promise, 只有一个则直接返回第0个
   var result = entry.length > 1
     ? Promise.all(entry.map(function (handler) { return handler(payload); }))
     : entry[0](payload);
@@ -538,6 +570,7 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
   return new Promise(function (resolve, reject) {
     result.then(function (res) {
       try {
+        // 通知所有订阅者 ( after )
         this$1._actionSubscribers
           .filter(function (sub) { return sub.after; })
           .forEach(function (sub) { return sub.after(action, this$1.state); });
@@ -550,6 +583,7 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
       resolve(res);
     }, function (error) {
       try {
+        // 通知订阅者中的 error 处理函数以捕获分发 action 的时候被抛出的错误
         this$1._actionSubscribers
           .filter(function (sub) { return sub.error; })
           .forEach(function (sub) { return sub.error(action, this$1.state, error); });
@@ -564,15 +598,18 @@ Store.prototype.dispatch = function dispatch (_type, _payload) {
   })
 };
 
+// 订阅 mutation, 返回取消订阅的函数. 详情参看官方文档介绍
 Store.prototype.subscribe = function subscribe (fn, options) {
   return genericSubscribe(fn, this._subscribers, options)
 };
 
+// 订阅 action
 Store.prototype.subscribeAction = function subscribeAction (fn, options) {
   var subs = typeof fn === 'function' ? { before: fn } : fn;
   return genericSubscribe(subs, this._actionSubscribers, options)
 };
 
+// 观察一个 getter 方法. 这里用的是 vm.$watch api
 Store.prototype.watch = function watch (getter, cb, options) {
     var this$1 = this;
 
@@ -590,9 +627,11 @@ Store.prototype.replaceState = function replaceState (state) {
   });
 };
 
+// 注册一个动态 module，当业务进行异步加载的时候, 可以通过该接口进行注册动态 module
 Store.prototype.registerModule = function registerModule (path, rawModule, options) {
     if ( options === void 0 ) options = {};
 
+  // 转为数组
   if (typeof path === 'string') { path = [path]; }
 
   if ((process.env.NODE_ENV !== 'production')) {
@@ -600,12 +639,16 @@ Store.prototype.registerModule = function registerModule (path, rawModule, optio
     assert(path.length > 0, 'cannot register the root module by using registerModule.');
   }
 
+  // 注册
   this._modules.register(path, rawModule);
+  // 初始化 module
   installModule(this, this.state, path, this._modules.get(path), options.preserveState);
+  // 通过 vm 重置 store
   // reset store to update getters...
   resetStoreVM(this, this.state);
 };
 
+// 注销一个动态module
 Store.prototype.unregisterModule = function unregisterModule (path) {
     var this$1 = this;
 
@@ -615,11 +658,15 @@ Store.prototype.unregisterModule = function unregisterModule (path) {
     assert(Array.isArray(path), "module path must be a string or an Array.");
   }
 
+  // 注销
   this._modules.unregister(path);
   this._withCommit(function () {
+    // 获取父级的state
     var parentState = getNestedState(this$1.state, path.slice(0, -1));
+    // 从父级中删除
     Vue.delete(parentState, path[path.length - 1]);
   });
+  // 重置 store
   resetStore(this);
 };
 
@@ -649,10 +696,12 @@ Object.defineProperties( Store.prototype, prototypeAccessors$1 );
 
 function genericSubscribe (fn, subs, options) {
   if (subs.indexOf(fn) < 0) {
+    // prepend 属性存在且为 true, 则将其添加到数组的最开始, 否则添加到末尾
     options && options.prepend
       ? subs.unshift(fn)
       : subs.push(fn);
   }
+  // 返回 unsubscribe 函数, 用于卸载订阅
   return function () {
     var i = subs.indexOf(fn);
     if (i > -1) {
@@ -661,6 +710,7 @@ function genericSubscribe (fn, subs, options) {
   }
 }
 
+// 重置 store
 function resetStore (store, hot) {
   store._actions = Object.create(null);
   store._mutations = Object.create(null);
@@ -674,6 +724,7 @@ function resetStore (store, hot) {
 }
 
 function resetStoreVM (store, state, hot) {
+  // 存放之前的 vm 对象
   var oldVm = store._vm;
 
   // bind store public getters
@@ -682,6 +733,8 @@ function resetStoreVM (store, state, hot) {
   store._makeLocalGettersCache = Object.create(null);
   var wrappedGetters = store._wrappedGetters;
   var computed = {};
+
+  // 将对 store.getters.someProp 的访问代理到 store._vm.someProp, 即 Vue 实例的 computed 属性
   forEachValue(wrappedGetters, function (fn, key) {
     // use computed to leverage its lazy-caching mechanism
     // direct inline function use will lead to closure preserving oldVm.
@@ -693,25 +746,32 @@ function resetStoreVM (store, state, hot) {
     });
   });
 
+  // 使用 Vue 将 state 转换为 `响应式`, 
   // use a Vue instance to store the state tree
   // suppress warnings just in case the user has added
   // some funky global mixins
+
   var silent = Vue.config.silent;
+  // Vue.config.silent 暂时设置为true的目的是在new一个Vue实例的过程中不会报出一切警告
   Vue.config.silent = true;
+  // 通过 new Vue() 的形式将 state 转换为响应式, 同时将 getters 转为 computed
   store._vm = new Vue({
     data: {
       $$state: state
     },
+    // example: vm.$store.getters.userInfo -> vm.$store._vm.userInfo ( 计算属性 )
     computed: computed
   });
   Vue.config.silent = silent;
 
   // enable strict mode for new vm
   if (store.strict) {
+    // 开启严格模式后, 在 mutation 之外修改 state 会抛出异常.
     enableStrictMode(store);
   }
 
   if (oldVm) {
+    // 解除旧 vm 的 state 的引用, 以及销毁旧的 Vue 对象
     if (hot) {
       // dispatch changes in all subscribed watchers
       // to force getter re-evaluation for hot reloading.
@@ -724,9 +784,12 @@ function resetStoreVM (store, state, hot) {
 }
 
 function installModule (store, rootState, path, module, hot) {
+  // 是否是根 module
   var isRoot = !path.length;
+  // 获取 module 的命名空间
   var namespace = store._modules.getNamespace(path);
 
+  // 如果有 namespace 则在 _modulesNamespaceMap 中注册
   // register in namespace map
   if (module.namespaced) {
     if (store._modulesNamespaceMap[namespace] && (process.env.NODE_ENV !== 'production')) {
@@ -753,22 +816,26 @@ function installModule (store, rootState, path, module, hot) {
 
   var local = module.context = makeLocalContext(store, namespace, path);
 
+  // 遍历注册 mutations
   module.forEachMutation(function (mutation, key) {
     var namespacedType = namespace + key;
     registerMutation(store, namespacedType, mutation, local);
   });
 
+  // 遍历注册 actions
   module.forEachAction(function (action, key) {
     var type = action.root ? key : namespace + key;
     var handler = action.handler || action;
     registerAction(store, type, handler, local);
   });
 
+  // 遍历注册 getters
   module.forEachGetter(function (getter, key) {
     var namespacedType = namespace + key;
     registerGetter(store, namespacedType, getter, local);
   });
 
+  // 递归安装 module
   module.forEachChild(function (child, key) {
     installModule(store, rootState, path.concat(key), child, hot);
   });
@@ -865,8 +932,11 @@ function registerMutation (store, type, handler, local) {
   });
 }
 
+// 注册 action
 function registerAction (store, type, handler, local) {
+  // 取出 type 对应的 actions (数组)
   var entry = store._actions[type] || (store._actions[type] = []);
+  // 对 handler 处理函数进行包装
   entry.push(function wrappedActionHandler (payload) {
     var res = handler.call(store, {
       dispatch: local.dispatch,
@@ -876,10 +946,13 @@ function registerAction (store, type, handler, local) {
       rootGetters: store.getters,
       rootState: store.state
     }, payload);
+    // 判断是否是 Promise
     if (!isPromise(res)) {
+      // 不是 Promise 则将其转为 Promise
       res = Promise.resolve(res);
     }
     if (store._devtoolHook) {
+      // 存在 devtool 插件时, emit vuex:error 事件给 devtool
       return res.catch(function (err) {
         store._devtoolHook.emit('vuex:error', err);
         throw err
@@ -907,6 +980,7 @@ function registerGetter (store, type, rawGetter, local) {
   };
 }
 
+// 深度监听严格模式下 state 的修改, 在 mutation 修改 state 会抛出异常
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, function () {
     if ((process.env.NODE_ENV !== 'production')) {
@@ -954,17 +1028,40 @@ function install (_Vue) {
  * @param {String} [namespace] - Module's namespace
  * @param {Object|Array} states # Object's item can be a function which accept state and getters for param, you can do something for state and getters in it.
  * @param {Object}
+ * @example
+ * 
+ * computed: {
+ *   // 使用方法一, 简写( 当映射的计算属性的名称与 state 的子节点名称相同时 ): 
+ *   ...mapState(['userId', 'siteId'])
+ * 
+ *   // 使用方法二:
+ *   ...mapState({
+ *     uid: state => state.userId,
+ *   })
+ * }
  */
 var mapState = normalizeNamespace(function (namespace, states) {
+  /**
+   * 保存 key 到 fn 的映射结果, 最终会被注入到 Vue 的 computed 中
+   * example:
+   * 
+   * res = {
+   *   userId: function mappedState() {
+   *     // ... 
+   *   }
+   * }
+   */
   var res = {};
   if ((process.env.NODE_ENV !== 'production') && !isValidMap(states)) {
     console.error('[vuex] mapState: mapper parameter must be either an Array or an Object');
   }
+
   normalizeMap(states).forEach(function (ref) {
     var key = ref.key;
     var val = ref.val;
 
     res[key] = function mappedState () {
+      // this 指 vm 实例
       var state = this.$store.state;
       var getters = this.$store.getters;
       if (namespace) {
@@ -986,10 +1083,21 @@ var mapState = normalizeNamespace(function (namespace, states) {
 });
 
 /**
+ * 将组件中的 methods 映射为 store.commit 调用
+ * 
  * Reduce the code which written in Vue.js for committing the mutation
  * @param {String} [namespace] - Module's namespace
  * @param {Object|Array} mutations # Object's item can be a function which accept `commit` function as the first param, it can accept another params. You can commit mutation and do any other things in this function. specially, You need to pass anthor params from the mapped function.
  * @return {Object}
+ * @example
+ * 
+ * methods: {
+ *   ...mapMutations(['increment']), // 将 this.increment 映射为 this.$store.commit('increment')
+ *   // or 
+ *   ...mapMutations({
+ *     add: 'increment', // 将 this.add 映射为 this.$store.commit('increment')
+ *   })
+ * }
  */
 var mapMutations = normalizeNamespace(function (namespace, mutations) {
   var res = {};

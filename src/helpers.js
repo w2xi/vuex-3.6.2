@@ -5,17 +5,41 @@ import { isObject } from './util'
  * @param {String} [namespace] - Module's namespace
  * @param {Object|Array} states # Object's item can be a function which accept state and getters for param, you can do something for state and getters in it.
  * @param {Object}
+ * @example
+ * 
+ * computed: {
+ *   // 使用方法一, 简写( 当映射的计算属性的名称与 state 的子节点名称相同时 ): 
+ *   ...mapState(['userId', 'siteId'])
+ * 
+ *   // 使用方法二:
+ *   ...mapState({
+ *     uid: state => state.userId,
+ *   })
+ * }
  */
 export const mapState = normalizeNamespace((namespace, states) => {
+  /**
+   * 保存 key 到 fn 的映射结果, 最终会被注入到 Vue 的 computed 中
+   * example:
+   * 
+   * res = {
+   *   userId: function mappedState() {
+   *     // ... 
+   *   }
+   * }
+   */
   const res = {}
   if (__DEV__ && !isValidMap(states)) {
     console.error('[vuex] mapState: mapper parameter must be either an Array or an Object')
   }
+
   normalizeMap(states).forEach(({ key, val }) => {
     res[key] = function mappedState () {
+      // this 指 vm 实例
       let state = this.$store.state
       let getters = this.$store.getters
       if (namespace) {
+        // 用 namespace 从 store 中找一个模块
         const module = getModuleByNamespace(this.$store, 'mapState', namespace)
         if (!module) {
           return
@@ -34,10 +58,21 @@ export const mapState = normalizeNamespace((namespace, states) => {
 })
 
 /**
+ * 将组件中的 methods 映射为 store.commit 调用
+ * 
  * Reduce the code which written in Vue.js for committing the mutation
  * @param {String} [namespace] - Module's namespace
  * @param {Object|Array} mutations # Object's item can be a function which accept `commit` function as the first param, it can accept another params. You can commit mutation and do any other things in this function. specially, You need to pass anthor params from the mapped function.
  * @return {Object}
+ * @example
+ * 
+ * methods: {
+ *   ...mapMutations(['increment']), // 将 this.increment 映射为 this.$store.commit('increment')
+ *   // or 
+ *   ...mapMutations({
+ *     add: 'increment', // 将 this.add 映射为 this.$store.commit('increment')
+ *   })
+ * }
  */
 export const mapMutations = normalizeNamespace((namespace, mutations) => {
   const res = {}
@@ -152,6 +187,7 @@ function normalizeMap (map) {
 }
 
 /**
+ * 校验是否是 map 是数组或对象
  * Validate whether given map is valid or not
  * @param {*} map
  * @return {Boolean}

@@ -4,8 +4,10 @@ import { forEachValue } from '../util'
 export default class Module {
   constructor (rawModule, runtime) {
     this.runtime = runtime
+    // 存储子模块
     // Store some children item
     this._children = Object.create(null)
+    // // 存储原始未加工的模块
     // Store the origin module object which passed by programmer
     this._rawModule = rawModule
     const rawState = rawModule.state
